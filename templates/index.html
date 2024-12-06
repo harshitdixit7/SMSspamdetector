@@ -3,31 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spam Detector</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
-        }
-        form {
-            margin-bottom: 20px;
-        }
-        input, button {
-            font-size: 16px;
-        }
-        h2 {
-            color: #4CAF50;
-        }
-        p {
-            font-size: 18px;
-        }
-    </style>
+    <title>SMS Spam Detection</title>
 </head>
-<body>
+<body style="font-family: Arial, sans-serif; margin: 20px;">
     <h1>SMS Spam Detection</h1>
     <form method="POST">
         <label for="message">Enter your message:</label><br><br>
-        <input type="text" id="message" name="message" placeholder="Enter SMS here..." style="width: 300px; padding: 8px;" required><br><br>
+        <input type="text" id="message" name="message" style="width: 300px; padding: 8px;" required><br><br>
         <button type="submit" style="padding: 8px 16px;">Check</button>
     </form>
 
@@ -40,11 +22,6 @@
 
         <h2>Confidence:</h2>
         <p>{{ predict_proba }}</p>
-    {% endif %}
-
-    {% if error %}
-        <h2 style="color: red;">Error:</h2>
-        <p>{{ error }}</p>
     {% endif %}
 </body>
 </html>

@@ -1,85 +1,77 @@
-from sklearn.naive_bayes import *
-from sklearn.dummy import *
-from sklearn.ensemble import *
-from sklearn.neighbors import *
-from sklearn.tree import *
-from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer, HashingVectorizer
-from sklearn.calibration import *
-from sklearn.linear_model import *
-from sklearn.multiclass import *
-from sklearn.svm import *
 import pandas as pd
+import re
+from sklearn.svm import SVC
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.utils import resample
+from sklearn.metrics import classification_report
 import pickle
-import logging
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Preprocess the text: clean the message
+def preprocess_text(text):
+    text = text.lower()  # Convert to lowercase
+    text = re.sub(r'\d+', '', text)  # Remove digits
+    text = re.sub(r'[^\w\s]', '', text)  # Remove punctuation
+    return text
 
-def perform_and_save(classifiers, vectorizers, train_data, test_data):
-    best_score = 0
-    best_classifier = None
-    best_vectorizer = None
-    
-    for classifier in classifiers:
-        for vectorizer in vectorizers:
-            try:
-                # Train
-                vectorize_text = vectorizer.fit_transform(train_data.v2)
-                classifier.fit(vectorize_text, train_data.v1)
-
-                # Test and evaluate
-                vectorize_text_test = vectorizer.transform(test_data.v2)
-                score = classifier.score(vectorize_text_test, test_data.v1)
-
-                logging.info(f"{classifier.__class__.__name__} with {vectorizer.__class__.__name__}. Has score: {score}")
-                
-                # Save the best-performing model
-                if score > best_score:
-                    best_score = score
-                    best_classifier = classifier
-                    best_vectorizer = vectorizer
-            except Exception as e:
-                logging.error(f"Error with {classifier.__class__.__name__} and {vectorizer.__class__.__name__}: {e}")
-
-    # Save the best classifier and vectorizer only if valid
-    if best_classifier and best_vectorizer:
-        with open('model.pkl', 'wb') as model_file:
-            pickle.dump(best_classifier, model_file)
-        with open('vectorizer.pkl', 'wb') as vectorizer_file:
-            pickle.dump(best_vectorizer, vectorizer_file)
-        logging.info(f"Best Model: {best_classifier.__class__.__name__} with {best_vectorizer.__class__.__name__}, Score: {best_score}")
-        logging.info("Best model and vectorizer saved successfully!")
-    else:
-        logging.warning("No valid model and vectorizer were found.")
-
-# Load dataset
+# Load the dataset (using 'spam.csv' with latin-1 encoding)
 data = pd.read_csv('spam.csv', encoding='latin-1')
 
-# Validate dataset columns
+# Ensure the dataset has the required columns ('v1' for labels and 'v2' for messages)
 if 'v1' not in data.columns or 'v2' not in data.columns:
     raise ValueError("Dataset must have 'v1' as labels and 'v2' as text columns.")
 
-# Drop rows with missing values
-data = data.dropna(subset=['v1', 'v2'])
+# Split data into training (4400 items) and testing (1172 items)
+train_data = data[:4400]
+test_data = data[4400:]
 
-if data.empty:
-    raise ValueError("Dataset is empty or all rows have missing values.")
+# Apply preprocessing to the 'v2' column (messages)
+train_data['v2'] = train_data['v2'].apply(preprocess_text)
+test_data['v2'] = test_data['v2'].apply(preprocess_text)
 
-learn = data[:4400]  # 4400 items for training
-test = data[4400:]   # 1172 items for testing
+# Handle class imbalance by oversampling the minority class (spam)
+# Separate majority and minority classes
+ham = train_data[train_data['v1'] == 'ham']
+spam = train_data[train_data['v1'] == 'spam']
 
-perform_and_save(
-    [
-        RandomForestClassifier(n_estimators=100, n_jobs=-1),
-        AdaBoostClassifier(),
-        ExtraTreesClassifier(),
-        OneVsRestClassifier(SVC(kernel='linear', probability=True)),
-        KNeighborsClassifier()
-    ],
-    [
-        TfidfVectorizer(),
-        CountVectorizer()
-    ],
-    learn,
-    test
-)
+# Oversample the minority class (spam)
+spam_upsampled = resample(spam, 
+                          replace=True,     # Sample with replacement
+                          n_samples=len(ham),  # Match number of samples in ham
+                          random_state=42)   # For reproducibility
+
+# Combine the upsampled minority class with the majority class
+train_data_balanced = pd.concat([ham, spam_upsampled])
+
+# Optionally, print the class distribution after balancing
+print("Class distribution after balancing:")
+print(train_data_balanced['v1'].value_counts())
+
+# Initialize the vectorizer and classifier with adjusted parameters
+vectorizer = TfidfVectorizer(min_df=5, max_df=0.8, ngram_range=(1, 2))  # Adjust ngram_range as needed
+classifier = OneVsRestClassifier(SVC(kernel='linear'))
+
+# Train the model on the balanced data
+vectorize_text = vectorizer.fit_transform(train_data_balanced['v2'])  # Vectorize training text
+classifier.fit(vectorize_text, train_data_balanced['v1'])  # Train on the vectorized text
+
+# Evaluate the model using the test data
+vectorize_text_test = vectorizer.transform(test_data['v2'])  # Vectorize test text
+predictions = classifier.predict(vectorize_text_test)  # Get predictions
+
+# Print classification report (precision, recall, F1-score, accuracy)
+print("Model evaluation on test data:")
+print(classification_report(test_data['v1'], predictions))
+
+# Calculate and print the accuracy
+score = classifier.score(vectorize_text_test, test_data['v1'])  # Get accuracy score
+print(f"Model accuracy: {score * 100:.2f}%")
+
+# Save the trained model and vectorizer to disk using pickle
+with open('model.pkl', 'wb') as model_file:
+    pickle.dump(classifier, model_file)
+
+with open('vectorizer.pkl', 'wb') as vectorizer_file:
+    pickle.dump(vectorizer, vectorizer_file)
+
+print("Model and vectorizer saved successfully!")
