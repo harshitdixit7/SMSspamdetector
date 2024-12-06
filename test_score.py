@@ -13,41 +13,45 @@ from sklearn.svm import *
 import pandas
 import csv
 
+# Load dataset
 data = pandas.read_csv('spam.csv', encoding='latin-1')
-train_data = data[:4400] # 4400 items
-test_data = data[4400:] # 1172 items
 
+# Split data into train and test sets
+train_data = data[:4400]  # 4400 items for training
+test_data = data[4400:]   # 1172 items for testing
+
+# Initialize classifier and vectorizer
 classifier = OneVsRestClassifier(SVC(kernel='linear'))
 vectorizer = TfidfVectorizer()
 
-# train
-vectorize_text = vectorizer.fit_transform(train_data.v2)
-classifier.fit(vectorize_text, train_data.v1)
+# Train the model
+vectorize_text = vectorizer.fit_transform(train_data['v2'])  # 'v2' is the text column
+classifier.fit(vectorize_text, train_data['v1'])  # 'v1' is the label column
 
-# score
-# vectorize_text = vectorizer.transform(test_data.v2)
-# score = classifier.score(vectorize_text, test_data.v1)
-# print(score) # 98,8
-
-
+# Prepare list to store results
 csv_arr = []
+
+# Loop through test data to get predictions and compare with actual values
 for index, row in test_data.iterrows():
-    answer = row[0]
-    text = row[1]
-    vectorize_text = vectorizer.transform([text])
-    predict = classifier.predict(vectorize_text)[0]
-    if predict == answer:
-        result = 'right'
-    else:
-        result = 'wrong'
+    answer = row['v1']  # True label
+    text = row['v2']    # Message text
+    vectorized_text = vectorizer.transform([text])
+    predict = classifier.predict(vectorized_text)[0]  # Model prediction
+
+    result = 'right' if predict == answer else 'wrong'
+
+    # Append to the results array
     csv_arr.append([len(csv_arr), text, answer, predict, result])
 
+# Write results to CSV with utf-8 encoding
+with open('test_score.csv', 'w', newline='', encoding='utf-8') as csvfile:
+    spamwriter = csv.writer(csvfile, delimiter=';', quotechar='"', quoting=csv.QUOTE_MINIMAL)
 
-# write csv
-with open('test_score.csv', 'w', newline='') as csvfile:
-    spamwriter = csv.writer(csvfile, delimiter=';',
-            quotechar='"', quoting=csv.QUOTE_MINIMAL)
-    spamwriter.writerow(['#', 'text', 'answer', 'predict', result])
+    # Write header
+    spamwriter.writerow(['#', 'text', 'answer', 'predict', 'result'])
 
+    # Write each row of results
     for row in csv_arr:
         spamwriter.writerow(row)
+
+print("Test results saved to 'test_score.csv'.")

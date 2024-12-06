@@ -1,65 +1,55 @@
-import os
-from flask import Flask, request, jsonify
+from flask import Flask, render_template, request, jsonify
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.multiclass import OneVsRestClassifier
 from sklearn.svm import SVC
 import pandas as pd
+import pickle
+import logging
 
 app = Flask(__name__)
 
-# Load data
-data = pd.read_csv('spam.csv', encoding='latin-1')
+# Configure logging
+logging.basicConfig(level=logging.DEBUG)
 
-# Check if the column names match what you're expecting
-print(data.columns)  # For debugging, ensure 'v1' is the label and 'v2' is the text
-
-# Splitting the dataset
-train_data = data[:4400]  # 4400 items for training
-test_data = data[4400:]  # 1172 items for testing
-
-# Train model
-Classifier = OneVsRestClassifier(SVC(kernel='linear', probability=True))
-Vectorizer = TfidfVectorizer()
-
-# Vectorizing text data
-vectorize_text = Vectorizer.fit_transform(train_data['v2'])  # Assuming 'v2' is the message column
-Classifier.fit(vectorize_text, train_data['v1'])  # Assuming 'v1' is the label column ('ham' or 'spam')
+# Load model and vectorizer with error handling
+try:
+    Classifier = pickle.load(open('model.pkl', 'rb'))
+    Vectorizer = pickle.load(open('vectorizer.pkl', 'rb'))
+except FileNotFoundError as e:
+    logging.error(f"Error: {e}. Ensure 'model.pkl' and 'vectorizer.pkl' exist.")
+    exit(1)
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
-    error = ''
-    predict_proba = ''
-    predict = ''
-    message = ''
+    try:
+        if request.method == 'POST':
+            # Get user input
+            message = request.form['message']
+            logging.info(f"Received message: {message}")
+            vectorized_message = Vectorizer.transform([message])
+            predict = Classifier.predict(vectorized_message)[0]
+            predict_proba = Classifier.predict_proba(vectorized_message).tolist()
+            return render_template('index.html', message=message, predict=predict, predict_proba=predict_proba)
+    except Exception as e:
+        logging.error(f"Error occurred: {e}")
+        return render_template('index.html', error=str(e))
+    return render_template('index.html')
 
-    global Classifier
-    global Vectorizer
+@app.route('/api/predict', methods=['POST'])
+def api_predict():
+    data = request.get_json()
+    if not data or 'message' not in data:
+        return jsonify({'error': 'Invalid input. Please provide a "message" key.'}), 400
 
     try:
-        # For POST requests, use form data
-        if request.method == 'POST':
-            message = request.form.get('message', '')
-
-        # For GET requests, use URL query parameter
-        elif request.method == 'GET':
-            message = request.args.get('message', '')
-
-        # If there's a message, predict spam or ham
-        if len(message) > 0:
-            vectorize_message = Vectorizer.transform([message])
-            predict = Classifier.predict(vectorize_message)[0]
-            predict_proba = Classifier.predict_proba(vectorize_message).tolist()
-
-    except Exception as inst:
-        error = f"Error: {type(inst).__name__}, {str(inst)}"
-
-    return jsonify(
-        message=message,
-        predict=predict,
-        predict_proba=predict_proba,
-        error=error
-    )
+        message = data['message']
+        vectorized_message = Vectorizer.transform([message])
+        predict = Classifier.predict(vectorized_message)[0]
+        predict_proba = Classifier.predict_proba(vectorized_message).tolist()
+        return jsonify({'message': message, 'predict': predict, 'predict_proba': predict_proba})
+    except Exception as e:
+        logging.error(f"Error during API prediction: {e}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=True)

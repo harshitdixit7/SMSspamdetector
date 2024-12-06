@@ -1,0 +1,6 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env/
+sklearn-env/  # your virtual environment folder
